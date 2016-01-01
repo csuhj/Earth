@@ -1,0 +1,261 @@
+<html>
+	<head>
+		<title>Solar system</title>
+		<style>canvas { width: 100%; height: 100% }</style>
+	</head>
+	<body>
+		<script src="http://threejs.org/build/three.min.js"></script>
+
+<!-- http://stemkoski.github.io/Three.js/Shader-Halo.html -->
+<!-- ---------------- Custom Shader Code ------------------------ -->
+<script id="vertexShader" type="x-shader/x-vertex">
+varying vec3 vNormal;
+void main() 
+{
+    vNormal = normalize( normalMatrix * normal );
+    gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+}
+</script>
+
+<!-- fragment shader a.k.a. pixel shader -->
+<script id="fragmentShader" type="x-shader/x-vertex"> 
+varying vec3 vNormal;
+void main() 
+{
+	float intensity = pow( 0.7 - dot( vNormal, vec3( 0.0, 0.0, 1.0 ) ), 4.0 ); 
+    gl_FragColor = vec4( 1.0, 1.0, 1.0, 1.0 ) * intensity;
+}
+</script>
+<!-- ----------------------------------------------------------- -->
+
+		<div id="sceneContainer" style="width:100%; height:90%;">
+		</div>
+		<div>
+			<p>Day <span id="dayPlaceholder" /></p>
+		</div>
+		
+		<script>
+			var startDate = new Date(2015, 01, 01, 00, 00, 00, 0);
+		
+			var day = 0;
+			var earthDaysInYear = 365.25;
+			var lunarMonthInEarthDays = 27.32;
+			var earthAxisTilt = 23.5;
+			var speed = 0.1;
+			var paused = false;
+			var showAxisLines = false;
+		        
+			var scene = new THREE.Scene();
+
+			var sceneContainer = document.getElementById('sceneContainer');
+			var sceneContainerHalfX = sceneContainer.clientWidth / 2;
+			var sceneContainerHalfY = sceneContainer.clientHeight / 2;
+
+			var dayPlaceholder = document.getElementById('dayPlaceholder');
+
+			var renderer = new THREE.WebGLRenderer();
+			renderer.setSize(sceneContainer.clientWidth, sceneContainer.clientHeight);
+
+			sceneContainer.appendChild(renderer.domElement);
+
+			var earth = createSphere(0xFFFFFF, 5, 0, 0, 0, { isLambert: true, textureImageUrl: 'images/earth.jpg', showAxisLine: showAxisLines });
+			earth.rotation.x = (earthAxisTilt/180)*Math.PI;
+			
+			var moon = createSphere(0xBBBBBB, 1, 10, 0, 0, { isLambert: true, showAxisLine: showAxisLines});
+			
+			var earthAndMoon = new THREE.Object3D();
+			earthAndMoon.add( earth );
+			earthAndMoon.add( moon );
+      
+			var earthAndMoonRelativeToSun = new THREE.Object3D();
+			earthAndMoonRelativeToSun.add(earthAndMoon);
+			scene.add( earthAndMoonRelativeToSun );
+			
+			var orientation = new THREE.Matrix4();
+			orientation.setPosition(new THREE.Vector3(30,0,0));
+			earthAndMoon.applyMatrix(orientation);
+			
+			var sun = createSphere(0xFFFF00, 10, 0, 0, 0, { showAxisLine: showAxisLines});
+			scene.add(sun);
+			
+			var glow = createGlowSphere(12, 0, 0, 0);
+			scene.add(glow);
+			
+			var pointLight = new THREE.PointLight(0xFFFFFF, 2);
+			pointLight.position.x = 0;
+			pointLight.position.y = 0;
+			pointLight.position.z = 0;
+			scene.add(pointLight);
+      
+			var skyBox = createSkyBox(500);
+			scene.add( skyBox );
+      
+			var camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+			camera.position.z = 70;
+			camera.position.y = 1;
+
+			earthAndMoon.position.y = 1;
+      
+			document.addEventListener( 'keydown', onDocumentKeyDown, false );
+			window.addEventListener( 'resize', onWindowResize, false );
+      
+			var render = function () {
+				requestAnimationFrame(render);
+
+				if (!paused) {
+					earth.rotation.y = getAngleInRads(day, 1);
+					
+					//to compensate for earthAndMoonRelativeToSun rotation, keeps the earth axis straight
+					earthAndMoon.rotation.y = -getAngleInRads(day + 90, earthDaysInYear);
+					
+					earthAndMoonRelativeToSun.rotation.y = getAngleInRads(day, earthDaysInYear);
+					moon.rotation.y = getAngleInRads(day, lunarMonthInEarthDays);
+					day += speed;
+										
+					dayPlaceholder.innerText = getOffsetDateString(startDate, day);
+				}
+
+				renderer.render(scene, camera);
+			};
+
+			render();
+
+			function getAngleInRads (numerator, denominator) {
+				return (numerator / denominator) * 2 * Math.PI;
+			}
+			
+			function getOffsetDateString(date, offsetInDays) {
+				var offsetDate = new Date(date.getTime() + (offsetInDays * 24 * 60 * 60 * 1000));
+				
+				var dd = offsetDate.getDate();
+				var MM = offsetDate.getMonth() + 1;
+				var yyyy = offsetDate.getFullYear();
+				var hh = offsetDate.getHours();
+				var mm = offsetDate.getMinutes();
+				
+				return dd+"/"+MM+"/"+yyyy+" "+hh+":"+mm;
+			}
+     
+			function createSphere(colour, radius, x, y, z) {
+				return createSphere(colour, radius, x, y, z, {});
+			}
+			
+			function createSphere(colour, radius, x, y, z, properties) {		 
+				var geometry = new THREE.SphereGeometry(radius,32,16);       
+				var orientation = new THREE.Matrix4();
+				orientation.setPosition(new THREE.Vector3(x,y,z));
+				geometry.applyMatrix(orientation);
+       
+    			var materialProperties;
+				if ('textureImageUrl' in properties && properties.textureImageUrl != null) {
+					var texture = THREE.ImageUtils.loadTexture( properties.textureImageUrl );
+					materialProperties = {color: colour, map: texture};
+				} else {
+					materialProperties = {color: colour};
+				}
+
+				var material;
+				if ('isLambert' in properties && properties.isLambert) {
+					material = new THREE.MeshLambertMaterial(materialProperties);
+				} else {
+					material = new THREE.MeshBasicMaterial(materialProperties);
+				}
+		 
+				var sphere = new THREE.Mesh(geometry, material);
+		 
+		 		if ('showAxisLine' in properties && properties.showAxisLine) {
+					var cylinderGeometry = new THREE.CylinderGeometry( radius / 30, radius / 30, radius * 4, 32 );
+					
+					var cylinderOrientation = new THREE.Matrix4();
+					cylinderOrientation.setPosition(new THREE.Vector3(x,y,z));
+					cylinderGeometry.applyMatrix(cylinderOrientation);
+
+					
+					var cylinderMaterial = new THREE.MeshBasicMaterial( {color: 0xff0000} );
+					var cylinder = new THREE.Mesh( cylinderGeometry, cylinderMaterial );
+
+					var sphereAndCylinder = new THREE.Object3D();
+					sphereAndCylinder.add( cylinder );
+					sphereAndCylinder.add( sphere );
+					return sphereAndCylinder;
+				} else {
+					return sphere;
+				}
+			}
+     
+     		function createSkyBox(size) {
+				var skyGeometry = new THREE.CubeGeometry( size, size, size );	
+      
+				var skyTexture = THREE.ImageUtils.loadTexture( 'images/sky.jpg' );
+				var skyMaterial = new THREE.MeshBasicMaterial( 
+				{ 
+					map: skyTexture,
+					side: THREE.BackSide
+				});
+			
+				return new THREE.Mesh( skyGeometry, skyMaterial );
+			}
+     
+			function createGlowSphere(radius, x, y, z) {
+				var customMaterial = new THREE.ShaderMaterial( 
+				{
+		    		uniforms: {  },
+					vertexShader:   document.getElementById( 'vertexShader'   ).textContent,
+					fragmentShader: document.getElementById( 'fragmentShader' ).textContent,
+					side: THREE.BackSide,
+					blending: THREE.AdditiveBlending,
+					transparent: true
+				});
+		
+				var ballGeometry = new THREE.SphereGeometry( radius, 32, 16 );
+				return new THREE.Mesh( ballGeometry, customMaterial );
+			}
+     			
+			function onDocumentKeyDown(event) {
+				event.preventDefault();
+
+				event = event || window.event;
+				var charCode = event.keyCode || event.which;
+				if (charCode == 37) { //Left arrow
+					camera.position.x += 1;
+				} else if (charCode == 39) { //Right arrow
+					camera.position.x -= 1;
+				} else if (charCode == 38) { //Up arrow
+					camera.position.y += 1;
+				} else if (charCode == 40) { //Down arrow
+					camera.position.y -= 1;
+				} else if (charCode == 107 || charCode == 187) { //+ key
+					camera.position.z -= 1;
+				} else if (charCode == 109 || charCode == 189) { //- key
+					camera.position.z += 1;
+				} else if (charCode == 32) { //spacebar
+					paused = !paused;
+				} else if (charCode == 190) { // > key
+				  if (speed > 1) {
+						speed += 0.1;
+					} else {
+						speed += 0.01;
+					}
+				} else if (charCode == 188) { // < key
+				  if (speed < 1) {
+						speed -= 0.01;
+					} else {
+						speed -= 0.1;
+					}
+				}
+				
+				camera.lookAt(new THREE.Vector3(0,0,0));
+			}
+      
+			function onWindowResize() {
+				sceneContainerHalfX = sceneContainer.clientWidth / 2;
+				sceneContainerHalfY = sceneContainer.clientHeight / 2;
+
+				camera.aspect = sceneContainer.clientWidth / sceneContainer.clientHeight;
+				camera.updateProjectionMatrix();
+
+				renderer.setSize(sceneContainer.clientWidth, sceneContainer.clientHeight);
+			}
+		</script>
+	</body>
+</html>
