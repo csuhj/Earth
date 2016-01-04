@@ -43,7 +43,7 @@ void main()
 			var earthAxisTilt = 23.5;
 			var speed = 0.1;
 			var paused = false;
-			var showAxisLines = false;
+			var showAxisLines = true;
 		        
 			var scene = new THREE.Scene();
 
@@ -58,15 +58,21 @@ void main()
 
 			sceneContainer.appendChild(renderer.domElement);
 
-			var earth = createSphere(0xFFFFFF, 5, 0, 0, 0, { isLambert: true, textureImageUrl: 'images/earth.jpg', showAxisLine: showAxisLines });
+			var earth = new THREE.Object3D();
+
+			var earthSphere = createSphere(0xFFFFFF, 5, 0, 0, 0, { isLambert: true, textureImageUrl: 'images/earth.jpg', showAxisLine: showAxisLines });
+			var earthLocationMarker = createLocationCylinder(6, 0, 0, 0, 52.2, 1.5);
+			earth.add( earthSphere );
+			earth.add( earthLocationMarker );
+
 			earth.rotation.x = (earthAxisTilt/180)*Math.PI;
 			
 			var moon = createSphere(0xBBBBBB, 1, 10, 0, 0, { isLambert: true, showAxisLine: showAxisLines});
-			
+
 			var earthAndMoon = new THREE.Object3D();
 			earthAndMoon.add( earth );
 			earthAndMoon.add( moon );
-      
+
 			var earthAndMoonRelativeToSun = new THREE.Object3D();
 			earthAndMoonRelativeToSun.add(earthAndMoon);
 			scene.add( earthAndMoonRelativeToSun );
@@ -85,6 +91,7 @@ void main()
 			pointLight.position.x = 0;
 			pointLight.position.y = 0;
 			pointLight.position.z = 0;
+
 			scene.add(pointLight);
       
 			var skyBox = createSkyBox(500);
@@ -104,7 +111,7 @@ void main()
 
 				if (!paused) {
 					earth.rotation.y = getAngleInRads(day, 1);
-					
+
 					//to compensate for earthAndMoonRelativeToSun rotation, keeps the earth axis straight
 					earthAndMoon.rotation.y = -getAngleInRads(day + 90, earthDaysInYear);
 					
@@ -181,6 +188,48 @@ void main()
 				} else {
 					return sphere;
 				}
+			}
+
+			function createLocationCylinder(radius, x, y, z, lat, long) {
+
+				var latLongVector = latLongToVector3(lat, -long, radius * 1.5);
+				var cylinderMaterial = new THREE.MeshBasicMaterial( {color: 0x0000ff} );
+
+				var cylinder = createCylinder(radius / 30, new THREE.Vector3(x, y, z), latLongVector, cylinderMaterial)
+				return cylinder;
+			}
+
+			function createCylinder(radius, pointX, pointY, material)
+			{
+				var direction = new THREE.Vector3().subVectors(pointY, pointX);
+				var arrow = new THREE.ArrowHelper(direction.clone().normalize(), pointX);
+
+				var rotation = new THREE.Euler().setFromQuaternion(arrow.quaternion);
+				var position = new THREE.Vector3().addVectors( pointX, direction.multiplyScalar(0.5) );
+
+				var cylinderGeometry = new THREE.CylinderGeometry(radius, radius, direction.length(), 32);
+
+				var cylinder = new THREE.Mesh(cylinderGeometry, material);
+				cylinder.rotation.order = rotation.order;
+				cylinder.rotation.x = rotation.x;
+				cylinder.rotation.y = rotation.y;
+				cylinder.rotation.z = rotation.z;
+
+				cylinder.position.x = position.x;
+				cylinder.position.y = position.y;
+				cylinder.position.z = position.z;
+				return cylinder;
+			}
+
+			function latLongToVector3(lat, long, length) {
+				var phi = (lat)*Math.PI/180;
+				var theta = (long-180)*Math.PI/180;
+
+				var x = -length * Math.cos(phi) * Math.cos(theta);
+				var y = length * Math.sin(phi);
+				var z = length * Math.cos(phi) * Math.sin(theta);
+
+				return new THREE.Vector3(x,y,z);
 			}
      
      		function createSkyBox(size) {
